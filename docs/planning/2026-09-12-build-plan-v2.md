@@ -11,10 +11,10 @@ Same destination as the attached implementation plan, reordered around one struc
 
 | | |
 |---|---|
-| **Scope** | UK + Canada only. Tenant key present, tenant tooling deferred |
-| **Shape** | 6 build stages each with an exit test, 2 parallel non-engineering tracks |
-| **Effort** | 23–30 engineering days to full Lane A + Lane B (one full-time engineer) |
-| **First live output** | End of Stage 3 — ~11 days in, zero AI spend |
+| **Scope** | One shared archive, two portals. Immigration is domain pack #1 |
+| **Shape** | 3 data layers, 6 build stages each with an exit test, 2 parallel tracks |
+| **Effort** | 24–31 engineering days to full Lane A + Lane B (one full-time engineer) |
+| **First live output** | End of Stage 3 — ~12 days in, zero AI spend |
 
 ---
 
@@ -23,9 +23,9 @@ Same destination as the attached implementation plan, reordered around one struc
 v2 is a reordering and a tightening, not a replacement. Kept verbatim from the attached plan:
 
 - The **module layout** — `core / models / schemas / ingestion / pipeline / api`.
-- **Config-driven tenants and sources** in YAML, with the tenant FK present from the first table
-  while all tenant *tooling* is deferred. The best call in the document: cheap now, agonising to
-  retrofit, and no gold-plating.
+- **Config-driven tenants and sources** in YAML, with all tenant *tooling* deferred. Deferring the
+  tooling is the best call in the document — no gold-plating. Where the tenancy *data model* goes is
+  a separate question; v2 got it wrong on the first pass and §3 corrects it.
 - **Dual Postgres / SQLite** via async SQLAlchemy, so the suite runs with no Docker.
 - The **two anchor routes** — UK Skilled Worker and Canada Express Entry category-based selection.
 - The **stack** (FastAPI, Pydantic v2, SQLAlchemy 2, httpx, feedparser) and the **endpoint shapes**.
@@ -74,9 +74,99 @@ guess about what to extract.
 It also resolves the third reading's contradiction: you can sell an *instant* alert and still gate
 everything risky, because the instant thing and the risky thing are no longer the same object.
 
-## §3 Two tracks that start before Stage 1
+## §3 The factory: what multi-tenant actually requires
 
-### Track A — Clearances (file all six on day one)
+v2's first pass treated multi-tenancy as a feature to defer rather than a force shaping the schema,
+and one Stage 1 line was wrong: *"tenant FK on every content row."* Put a tenant key on content and
+you get one of two bad outcomes — the same GOV.UK snapshot stored once per portal, destroying hash
+deduplication and splitting the archive that is supposed to be the moat, or a later migration that
+rewrites every query and every route. It also makes v1 acceptance criterion #15 — *"one source can
+produce different tenant-specific outputs"* — unsatisfiable by construction.
+
+### §3.1 Three layers, and only one knows about tenants
+
+1. **Archive — tenant-agnostic.** `Source`, `ContentSnapshot`, `PolicyFact`. One globally
+   deduplicated copy of what the authorities published. No `tenant_id`, ever.
+2. **Subscription — configuration.** Which sources, routes, categories and risk thresholds a portal
+   cares about. Lives in `tenants.yaml`.
+3. **Publication — tenant-scoped.** A fact rendered *for* one portal: its template, disclaimer,
+   channels, state, publish timestamp. The only content table carrying `tenant_id`.
+
+One ingestion, N publications. That is the unit economics of the factory, and the reason the archive
+argument gets *stronger* with each portal: VisaTrack and SkilledPath both consume the same UK
+threshold change at no extra fetch, storage or extraction cost. A second portal is close to pure
+margin on the ingestion side.
+
+It also fixes the review arithmetic. Review the **fact** once, then let publication rules fan it
+out. Review per published item and the human queue multiplies by portal count — the third reading's
+staffing estimate survives two portals and breaks at three.
+
+### §3.2 Two axes: the domain pack is code, the tenant is config
+
+The gap none of the three documents close. v1 promises *"adding a new portal must not require a new
+codebase"* and lists *"AI instructions"* and *"content templates"* as per-tenant configuration, with
+`theme: immigration` as a bare string. But extraction schemas and prompts cannot safely be free-text
+config — that is precisely the hallucination surface the Master Review spent its length closing.
+
+```
+domain_pack  # CODE. versioned, reviewed, corpus-tested.
+  extraction_schemas   Pydantic models per route
+  prompts              per schema, versioned with the pack
+  risk_table           topic × magnitude × reliability
+  render_templates     fixed prose templates
+  taxonomies           { SOC 2020, NOC 2021 TEER, … }
+  adapters             which ingestion adapters it binds
+
+tenant       # CONFIG. a YAML file. no code.
+  domain_pack          "immigration"
+  routes               subscription into the pack's routes
+  domain, branding     host, logo, theme tokens
+  channels             telegram, whatsapp, email
+  disclaimers, plans   text and commercial config
+```
+
+The commercial consequence is the takeaway:
+
+- **VisaTrack → SkilledPath is cheap.** Same domain pack, different route subscription, branding and
+  taxonomy emphasis. Days, mostly content. v1's claim is true for this case.
+- **VisaTrack → GrantTrack or TenderTrack is a new domain pack.** New schemas, prompts, risk table,
+  and its own golden corpus before it can be trusted. Weeks, and it is engineering, not config.
+
+v1's Phase 7 "portal creation wizard" implies these are the same exercise. They are not, and costing
+them the same way is how a portal-factory thesis fails in year two — you promise a new vertical in a
+week, then discover the extraction layer must be rebuilt and reviewed from scratch. Plan the wizard
+for axis two only: it spins up *tenants*, never *domain packs*.
+
+### §3.3 Multi-brand is not yet SaaS — and that distinction saves months
+
+Every portal in scope is operated by MCS: multi-brand, single-operator. The tenants are all yours,
+none is an adversary, none has a contract with you. Genuine SaaS — external customers running their
+own portals — adds tenant isolation as a *security* boundary, per-tenant secrets and key rotation,
+noisy-neighbour quotas, self-serve onboarding, per-tenant SLAs and support, and data-residency
+answers.
+
+**Where to draw the line:** build the **data separation** now — three layers, a publication table,
+host-based tenant resolution, tenant on every audit row — because it is structural and nearly free.
+Do **not** build operator isolation (row-level security, per-tenant credentials, quota enforcement)
+until an external customer is paying for a portal. With two internal tenants, RLS is the same
+gold-plating the Master Review rejected elsewhere. Note too that the moment a tenant is external,
+the shared archive stops being purely a schema question and becomes a licensing one: who owns the
+right to resell the policy history.
+
+### §3.4 What this changes, and what it does not
+
+It adds roughly a day to Stage 1 and changes nothing downstream, because the stages already put the
+schema first. It does **not** pull the admin console, theme manager, portal wizard, per-tenant
+billing or a second domain pack into scope — those stay deferred exactly as the attached plan had
+them, and that judgement was right. The change is confined to the shape of the tables plus one extra
+exit test: *one ingested fact, two portals, two renderings, one archive row.* If Stage 1 passes
+that, the factory is real rather than aspirational.
+
+---
+
+## §4 Two tracks that start before Stage 1
+
+### §4.1 Track A — Clearances (file all six on day one)
 
 | Item | Gates | Owner |
 |---|---|---|
@@ -87,7 +177,7 @@ everything risky, because the instant thing and the risky thing are no longer th
 | 3–5 licensed legal partners under contract | Primary revenue engine. Longest lead time — enterprise sales with legal negotiation | Tunde |
 | Data-protection position (NDPA 2023) | Lead gen and user accounts. Determines what may be collected → determines the schema, so it gates **Stage 1** | Tunde + counsel |
 
-### Track B — Manual validation (no code)
+### §4.2 Track B — Manual validation (no code)
 
 - **Run Lane A by hand, now.** Telegram channel, UK/Canada updates posted manually in the notice
   format, two weeks. Tests whether an audience forms, reveals from the replies which fields people
@@ -98,20 +188,25 @@ everything risky, because the instant thing and the risky thing are no longer th
 Writing five dossiers manually tells you which extraction fields matter far better than designing
 the Pydantic schema in the abstract — Track B is a genuine input to Stage 4.
 
-## §4 The build, stage by stage
+## §5 The build, stage by stage
 
 Sequenced by dependency, sized in engineering days for one competent full-time engineer.
 
-### Stage 1 — Spine · 3–4 days
+### Stage 1 — Spine and the three layers · 4–5 days
 - This repository. Alembic migration from the first table.
-- Temporal fact schema (§4.1): `valid_from`, `valid_to`, `superseded_by`, citation triple, taxonomy edition.
+- **Three-layer separation** (§3): archive tables carry no `tenant_id`; a `Publication` table is the
+  only tenant-scoped content layer.
+- Temporal fact schema (§5.1): `valid_from`, `valid_to`, `superseded_by`, citation triple, taxonomy
+  edition, plus `domain_pack` + `pack_version` stamps.
 - `ObjectStore` interface — local FS now, R2 later. Postgres never holds raw bytes.
-- `AuditLog` on every state transition, append-only, with actor identity.
-- `tenants.yaml` / `sources.yaml` validated at startup; tenant FK on every content row.
+- `AuditLog` on every state transition, append-only, carrying actor *and* tenant.
+- `tenants.yaml` / `sources.yaml` validated at startup; tenant resolved by host so routing is never
+  hardcoded.
 
 **Exit test:** migration clean on Postgres *and* SQLite; a snapshot lands as bytes on disk with only
 hash/pointer/metadata in the DB and one audit row; persisting a fact without a resolvable citation
-triple raises.
+triple raises. **And the factory test: one ingested fact publishes to two tenants with different
+templates and disclaimers, from a single archive row, with no duplicated snapshot.**
 
 ### Stage 2 — Ingestion and change detection, zero AI · 4–5 days
 - GOV.UK Content API adapter; IRCC RSS/Atom adapter.
@@ -175,11 +270,12 @@ on Track B results and Track A clearances, and deserves its own plan. Verify sho
 the defamation and right-of-reply constraints are written down as product requirements — highest
 legal exposure, lowest direct revenue.
 
-### §4.1 The record every stage is built around
+### §5.1 The record every stage is built around
 
 ```
-policy_fact
-  tenant_id        fk              # present from stage 1, unused until later
+policy_fact   # shared archive — no tenant_id, ever
+  domain_pack      "immigration"
+  pack_version     "1.3.0"         # which schema produced this fact
   route            "uk.skilled_worker"
   field            "general_salary_threshold"
   value            { amount, currency }
@@ -194,6 +290,15 @@ policy_fact
   risk_tier        enum — deterministic table, stage 5
   lane             notice | interpretation
   confidence       float | null
+
+publication    # the only tenant-scoped content layer
+  tenant_id        fk
+  fact_id          fk → policy_fact
+  template         tenant's render template
+  disclaimer       tenant's disclaimer text
+  channels         [telegram, whatsapp, feed]
+  state            draft | published | withdrawn
+  published_at     timestamp | null
 ```
 
 Three fields separate an archive from a news feed. The **validity interval and supersession pointer**
@@ -203,10 +308,10 @@ public API cannot answer. The **citation triple** ties every claim to the exact 
 revised, codes get reused with changed meanings, and an unstamped mapping starts returning wrong
 occupations with no error anywhere.
 
-## §5 Divergence from the attached implementation plan
+## §6 Divergence from the attached implementation plan
 
-D1–D4 are structural and the rest follow from them; D5–D16 are independent and can be taken
-piecemeal.
+D1–D4 and D17–D18 are structural and the rest follow from them; the remainder are independent and
+can be taken piecemeal.
 
 | # | Attached plan | Plan v2 | Why |
 |---|---|---|---|
@@ -225,11 +330,16 @@ piecemeal.
 | **D13** | Redis in compose from the start; no queue in code | Redis and worker queue arrive at Stage 4 | Fewer moving parts while the pipeline is deterministic; honest about deferral rather than silently absent |
 | **D14** | `POST /admin/approve/{change_id}` | Adds reject-with-reason, reviewer identity, immutable audit on both paths | "All material actions appear in audit logs" is an acceptance criterion; approve-only cannot satisfy it |
 | **D15** | No data-protection constraint on the schema | Data minimisation designed in: no case descriptions stored; a lead is an ID + consent record + audit row | NDPA 2023 obligations are unaddressed in all three documents and land on the lead-gen revenue engine |
+| **D17** | `Tenant` model plus a tenant key on content rows | Three layers: archive (no tenant), subscription (config), publication (tenant-scoped) | A tenant key on content either duplicates the archive per portal or forces rewriting every query later. It also makes v1 criterion #15 — one source, different tenant outputs — unsatisfiable |
+| **D18** | `theme: immigration` as a config string; per-tenant "AI instructions" | Domain pack as versioned, tested code; tenant config holds only a pack reference | Extraction schemas and prompts cannot be free-text tenant config — that is the hallucination surface the Master Review closed. It also separates a cheap new portal from an expensive new vertical |
+| **D19** | No provenance for which schema produced a fact | `domain_pack` + `pack_version` stamped on every fact | Same silent-corruption class as the taxonomy edition: you cannot re-extract, compare or invalidate facts without knowing which pack version wrote them |
+| **D20** | Tenant implied by the URL path only | Tenant resolved by host from Stage 1; audit rows carry tenant | Each portal is meant to look independent on its own domain. Retrofitting host resolution touches every route and auth check |
+| **D21** | Review queue implicitly per published item | Review the *fact* once; publish to N tenants by rule | Otherwise the human queue multiplies per portal and the staffing arithmetic breaks at portal three |
 | **D16** | Work begins immediately at the code | Tracks A and B start day one, in parallel | The six clearances are the real critical path, and Track B is the only demand test in the roadmap |
 
-## §6 Four things to confirm before Stage 1
+## §7 Five things to confirm before Stage 1
 
-v2 assumes the answers below. Three of the four change the schema, so they are cheap now and
+v2 assumes the answers below. Four of the five change the schema, so they are cheap now and
 expensive at Stage 4.
 
 1. **Two lanes, with Lane A shipping before any AI?** *Assumed yes.* The load-bearing decision.
@@ -240,9 +350,13 @@ expensive at Stage 4.
 3. **Do we store case descriptions in the overstay and lead flow?** *Assumed no* — encrypted to the
    partner, never retained; we keep an ID, a consent record and an audit row. Constrains the Stage 1
    schema, so it cannot wait for the lead product.
-4. **Who is building this, at what commitment?** Still unnamed in every document. The 23–30 day
+4. **Will any portal ever be operated by someone outside MCS?** *Assumed no, not within this plan.*
+   Every tenant today is yours — multi-brand single-operator, not SaaS. If an external operator is
+   genuinely on the 12-month horizon, say so now: it turns tenant isolation into a security boundary
+   and the shared archive into a licensing question, and both reach back into Stage 1.
+5. **Who is building this, at what commitment?** Still unnamed in every document. The 24–31 day
    figure is one competent engineer full-time. Part-time roughly doubles the calendar; the same
    person also running the review queue and partner sales roughly doubles it again.
 
-Confirm 1–3 and Stage 1 is buildable immediately: the schema, migration, storage interface and audit
-log need no vendor decision, no API key and no Docker. Question 4 changes only the calendar.
+Confirm 1–4 and Stage 1 is buildable immediately: the schema, migration, storage interface and audit
+log need no vendor decision, no API key and no Docker. Question 5 changes only the calendar.
