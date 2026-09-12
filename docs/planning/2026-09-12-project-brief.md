@@ -5,39 +5,91 @@
 **Published version:** https://claude.ai/code/artifact/9393c542-54d5-446f-a731-45ba7c500483
 **Detail:** `2026-09-12-build-plan-v2.md` · **Review:** `2026-09-12-third-reading.md`
 
-A monitoring platform that watches official immigration sources, records exactly what changed and
-when, and publishes it to focused consumer portals within seconds of publication — **with every claim
-traceable to the government document it came from.** One codebase and one archive behind any number
-of independently branded portals.
+A platform for running information portals that **monitor authoritative sources, record exactly what
+changed and when, and publish it with proof.** One codebase and one archive behind any number of
+independently branded portals, on any number of subjects. **Immigration is the first subject, not the
+definition.**
+
+| | |
+|---|---|
+| The platform | MCS Information Cloud — one backend, one archive, N portals |
+| First subject pack | Immigration — UK + Canada, two portals |
+| Build | 7 stages, 29–38 engineering days |
+| First live output | ~Day 12, zero AI spend |
 
 ---
 
-## The problem
+## The pattern we are productising
 
-Nigerian and West African migration demand is enormous and urgent, and the information environment
-serving it is actively harmful: rumour on TikTok and WhatsApp, predatory "ghost" consultants, and
-government rules that shift without warning. People make irreversible, expensive decisions —
-thousands of pounds in non-refundable fees, life savings, sometimes their legal status — on the basis
-of a stranger's video.
+The same problem recurs across many subjects. **An authority publishes documents. The rules inside
+them change. The people affected find out late, or from rumour, and make decisions with money and
+deadlines attached on the basis of information that is out of date or invented.** Nobody keeps a
+dated, cited record of what the rule actually said, so nobody can prove what was true when.
 
-Nobody is offering the boring thing that actually helps: **an accurate, timestamped, cited record of
-what the rules say and when they changed.** That is the product.
+That shape is identical whether the authority is a Home Office, a grant-making body, a procurement
+agency, a university admissions office or a professional regulator. The monitoring, change detection,
+dated archive, citation discipline, review workflow and distribution are all the same machine. Only
+the vocabulary of the subject differs.
+
+So we build the machine once and add subjects to it. **Immigration is first because it is the sharpest
+instance of the pattern** — highest stakes, worst existing information, most urgent audience — which
+makes it the best proving ground. It is not what the platform is.
+
+## What qualifies as a subject
+
+Not every topic belongs here. A subject fits when all four hold:
+
+1. **Authoritative sources.** Named bodies publish documents you can watch on a schedule, ideally via
+   an API or feed rather than a scraped page. No document trail means nothing to cite.
+2. **Contents that change.** Thresholds, deadlines, lists, fees, eligibility. If rules never move, a
+   static guide beats a monitoring platform.
+3. **Decisions with stakes.** The audience spends money or misses windows when they are wrong. That is
+   what makes a timely alert worth paying for.
+4. **Proof matters.** Someone needs to know what the rule said on a given date, because they acted on
+   it or must show they did.
+
+**What this rules out:** opinion, commentary, trends, market prices — anything without a traceable
+authoritative document behind it. Those may be good products; they are not *this* product, and
+building them here would break the citation discipline the platform rests on.
+
+## The portfolio
+
+A portal inside a subject already covered is **configuration — hours**. A portal in a new subject needs
+a new pack: source adapters, extraction schemas, risk table, templates and an accuracy corpus. How long
+depends mostly on how structured the sources are and how much regulatory exposure the subject carries.
+
+| Portal | Subject | Pack | Cost to add |
+|---|---|---|---|
+| **VisaTrack Africa** | Immigration policy and routes | Immigration · #1 | Being built |
+| **SkilledPath Africa** | Trades and skilled-worker migration | Immigration · #1 | Hours — config only |
+| **StudyPath Africa** | Student visas and admissions | Immigration · #1 | Hours, plus admissions sources later |
+| **TenderTrack Africa** | Public procurement notices | Procurement | Low — highly structured sources, little regulatory exposure |
+| **GrantTrack Africa** | Grants, funding calls, deadlines | Funding | Low to moderate — structured calls, many small sources |
+| **WorkAfrica** | Employment regulation, permits, labour rules | Employment | Moderate — overlaps immigration, own regulatory care |
+| **MediaTrack Africa** | Broadcast and media licensing | Media regulation | Moderate — assess source quality first |
+
+**Two things that are easy to miss.** First, the three immigration portals share one pack and one
+archive, so the second and third are nearly free. Second, **the low-risk subjects are the cheap ones** —
+a procurement portal needs no OISC-grade caution and its sources are unusually well structured, so it
+may be the fastest second pack and the easiest to monetise on B2B subscriptions. Immigration is the
+hardest thing on this list, and we are doing it first deliberately, to prove the machine against the
+worst case.
 
 ## How it works
 
 | | Step | |
 |---|---|---|
-| 01 | **Collect from official sources only** | GOV.UK Content API and IRCC feeds — structured, public, no scraping, no bot fights. UK + Canada at launch |
+| 01 | **Collect from authoritative sources** | APIs and feeds in preference to scraped pages. First pack: GOV.UK Content API and IRCC feeds, UK + Canada |
 | 02 | **Archive the bytes, detect real change** | Document stored whole in object storage; SHA-256 compared against the last version. Identical content discarded, so nothing downstream runs on a non-event |
 | 03 | **Publish the notice** — *Lane A, automatic* | Authority's headline, official link, retrieval timestamp, content hash. No interpretation, therefore near-zero legal exposure, out the door in seconds. **No AI involved at all** |
 | 04 | **Extract, compare, interpret** — *Lane B, gated* | Structured facts into a strict schema, compared against the previous version, risk-classified by a deterministic table |
-| 05 | **Review only what can cause harm** — *Lane B, gated* | Routine restatements publish themselves. Salary thresholds, quota cutoffs and anything touching overstay go to a person first. The gated set shrinks as accuracy is measured |
+| 05 | **Review only what can cause harm** — *Lane B, gated* | Routine restatements publish themselves. Each pack declares which changes can irreversibly harm a reader, and those go to a person first. The gated set shrinks as accuracy is measured |
 | 06 | **Distribute per portal** | Telegram, WhatsApp, email, and each portal's own website — every item carrying its citation, retrieval time and that portal's disclaimer |
 
 **The one design choice everything follows from:** splitting the fast, safe fact ("this document was
 published, here it is") from the slow, risky interpretation ("here is what it means for you"). It lets
 us promise *instant* alerts and still put a human in front of anything that could cost someone an
-application — because those are no longer the same object.
+application — because those are no longer the same object. It holds for every subject, not just immigration.
 
 ## What we are actually building
 
@@ -46,14 +98,18 @@ application — because those are no longer the same object.
   one takes hours.
 - **One shared archive.** The policy history is stored once and consumed by every portal. A second
   portal costs nothing extra to feed, and each new portal makes the archive more valuable.
-- **Subject packs are code.** Immigration is pack #1: its schemas, prompts, risk rules and templates.
-  A new portal in a covered subject is configuration. A new *subject* is a new pack and real engineering.
+- **Subject packs are code.** A pack carries source adapters, extraction schemas, prompts, risk table,
+  render templates, taxonomies, and **its own regulatory posture and never-automate class**. Immigration
+  advice is criminally regulated in the UK and Canada; procurement notices are not — the pack carries
+  that difference, not the platform. A new portal in a covered subject is configuration; a new *subject*
+  is a new pack and real engineering.
 - **Every fact is dated.** Facts carry validity ranges and supersession pointers, so we can answer what
   a rule said on any past date — and can never show a superseded threshold as current.
 
-First two portals: **VisaTrack Africa** (immigration information and policy monitoring) and
-**SkilledPath Africa** (trades and skilled-worker migration). Both MCS-owned, both drawing on the same
-archive, neither showing any sign of the other or of the platform underneath.
+All portals are MCS-owned — multi-brand single-operator, not software-as-a-service, which removes
+tenant security isolation, per-tenant secrets, quotas, self-serve onboarding and per-tenant SLAs from
+scope entirely. Naming note: the schema field is `subject_pack`, and facts carry `topic` rather than
+`route`, so nothing in the spine speaks immigration.
 
 ## Why it is defensible
 
@@ -83,8 +139,14 @@ restore drill inside the initial build.
   a person.
 - **Claims, not people.** Fact-checking addresses the claim and never accuses an individual, with right
   of reply and a correction trail. This is why social verification is deferred rather than rushed.
+- **Regulatory posture is per pack, not platform-wide.** Each subject declares its own exposure and its
+  own never-automate class. This is what keeps a low-risk second subject genuinely cheap.
 
 ## The build — 7 stages, 29–38 engineering days
+
+Stages 1–3, 6 and 7 build the **subject-agnostic spine**. Stages 4 and 5 build the extraction and
+review machinery *and* the first pack that exercises it. A second subject later reuses everything
+except its own pack contents.
 
 | Stage | Delivers | Days |
 |---|---|---|
@@ -120,17 +182,19 @@ one rather than week eight.
 
 | Decision | Status | Note |
 |---|---|---|
+| The platform is subject-agnostic; immigration is pack #1 | **Settled** | The spine knows nothing about any subject. Each subject is a versioned pack of schemas, prompts, risk rules, templates and regulatory posture. Portals are configuration on top |
 | Every portal is MCS-owned | **Settled** | Multi-brand single-operator, not SaaS. Removes tenant security isolation, per-tenant secrets and quotas, self-serve onboarding and per-tenant SLAs from scope entirely |
 | No case descriptions stored | **Settled** | The referral payload reaches the partner and is dropped. Audit rows record that a referral happened, never what it said |
 | Automation is earned, not assumed | **Settled** | Routine restatements publish automatically from launch; comparative changes promoted once a class proves out; overstay and unlawful presence never auto-publish. Expected destination 80–90% automatic within months |
 | Confirm the two-lane model | **Open** | The last load-bearing decision. Yes means a live product in ~12 days with no AI spend; no means one pipeline and ~25 days to first output |
 | Name the review-queue owner | **Open** | One person, 4 working hours flagged / 48 routine, written fallback. 1–7 hours a week at launch scope. Without a name the queue fills and the failure is silent |
+| Which subject is pack #2 | Not needed yet | Procurement looks cheapest and lowest-risk; the validation track should inform it. Nothing in stages 1–7 depends on the answer |
 | Who is building it | Affects calendar only | Day figures assume one competent engineer full-time. Part-time roughly doubles the calendar; one person also running the review queue and partner sales roughly doubles it again |
 
 ## Not in this build — deliberately
 
-Social-media claim verification and all inbound social monitoring; automated posting to X, Facebook
-and Instagram; payments; the B2B lead flow itself; SkilledPath's trade taxonomy content; and any
+Any second subject pack; social-media claim verification and all inbound social monitoring; automated
+posting to X, Facebook and Instagram; payments; the B2B lead flow itself; SkilledPath's trade taxonomy content; and any
 portal-management console. Countries beyond the UK and Canada are out too — each additional country
 multiplies review effort, the one cost that does not scale for free.
 

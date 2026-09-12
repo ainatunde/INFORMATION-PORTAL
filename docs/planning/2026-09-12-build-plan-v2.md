@@ -12,7 +12,7 @@ Same destination as the attached implementation plan, reordered around one struc
 
 | | |
 |---|---|
-| **Scope** | One shared archive, two portals. Immigration is domain pack #1 |
+| **Scope** | Subject-agnostic spine. One shared archive, two portals, immigration as pack #1 |
 | **Shape** | 3 data layers, 7 build stages each with an exit test, 2 parallel tracks |
 | **Effort** | 29–38 engineering days to both lanes plus the web portals (one full-time engineer) |
 | **First live output** | End of Stage 3 — ~12 days in, zero AI spend |
@@ -110,7 +110,7 @@ the accurate source, one viral error costs more than the review ever did.
 | **1 — Restatement** | Fee amount, form version, processing time, office change | **Automatic** | None needed — template-rendered restatement with a citation, no comparative claim |
 | **2 — Comparative** | Threshold X→Y, occupation added to or removed from a list, CRS cutoff | Human | Automatic after 50 consecutive approvals with zero material corrections in that class |
 | **3 — Consequential** | Grandfathering, transitional provisions, who is affected | Human | Only by explicit decision with legal input |
-| **4 — Never** | Overstay, unlawful presence, anything where acting on it could trigger a bar | Human always | Arguably not Lane B at all — route to the legal partner |
+| **4 — Never** | *Defined per pack* as any change where acting on wrong information causes the reader irreversible harm. Immigration: overstay, unlawful presence, anything triggering a bar. Procurement: disqualification criteria. Funding: eligibility that voids an application | Human always | None. Un-promotable in code rather than by policy — and arguably not Lane B at all, but a referral to a professional |
 
 Every review is a free labelled data point, so the calibration set accumulates while you operate.
 Class 1 is automatic from day one; Class 2 is the bulk of the volume and should clear its gate within
@@ -147,7 +147,14 @@ It also fixes the review arithmetic. Review the **fact** once, then let publicat
 out. Review per published item and the human queue multiplies by portal count — the third reading's
 staffing estimate survives two portals and breaks at three.
 
-### §3.2 Two axes: the domain pack is code, the tenant is config
+### §3.2 Two axes: the subject pack is code, the tenant is config
+
+Stated first, because the rest of this document reads wrongly without it: **the spine is
+subject-agnostic and knows nothing about immigration.** The source registry, change detection, archive,
+dated facts, citation triple, two lanes, three layers, review ladder, channel adapters and web tier are
+all generic. Immigration is pack #1 — the sharpest instance of the pattern, and therefore the best
+proving ground, not the platform's identity. v1 §2 always said this: StudyPath, WorkAfrica, GrantTrack,
+TenderTrack and MediaTrack sit on the same platform.
 
 The gap none of the three documents close. v1 promises *"adding a new portal must not require a new
 codebase"* and lists *"AI instructions"* and *"content templates"* as per-tenant configuration, with
@@ -155,17 +162,19 @@ codebase"* and lists *"AI instructions"* and *"content templates"* as per-tenant
 config — that is precisely the hallucination surface the Master Review spent its length closing.
 
 ```
-domain_pack  # CODE. versioned, reviewed, corpus-tested.
-  extraction_schemas   Pydantic models per route
+subject_pack  # CODE. versioned, reviewed, corpus-tested.
+  extraction_schemas   Pydantic models per topic
   prompts              per schema, versioned with the pack
   risk_table           topic × magnitude × reliability
   render_templates     fixed prose templates
   taxonomies           { SOC 2020, NOC 2021 TEER, … }
   adapters             which ingestion adapters it binds
+  regulatory_posture   this subject's own exposure
+  never_automate       this pack's Class 4 — see §2.2
 
 tenant       # CONFIG. a YAML file. no code.
-  domain_pack          "immigration"
-  routes               subscription into the pack's routes
+  subject_pack          "immigration"
+  topics               subscription into the pack's topics
   domain, branding     host, logo, theme tokens
   channels             telegram, whatsapp, email
   disclaimers, plans   text and commercial config
@@ -173,15 +182,15 @@ tenant       # CONFIG. a YAML file. no code.
 
 The commercial consequence is the takeaway:
 
-- **VisaTrack → SkilledPath is cheap.** Same domain pack, different route subscription, branding and
+- **VisaTrack → SkilledPath is cheap.** Same subject pack, different route subscription, branding and
   taxonomy emphasis. Days, mostly content. v1's claim is true for this case.
-- **VisaTrack → GrantTrack or TenderTrack is a new domain pack.** New schemas, prompts, risk table,
+- **VisaTrack → GrantTrack or TenderTrack is a new subject pack.** New schemas, prompts, risk table,
   and its own golden corpus before it can be trusted. Weeks, and it is engineering, not config.
 
 v1's Phase 7 "portal creation wizard" implies these are the same exercise. They are not, and costing
 them the same way is how a portal-factory thesis fails in year two — you promise a new vertical in a
 week, then discover the extraction layer must be rebuilt and reviewed from scratch. Plan the wizard
-for axis two only: it spins up *tenants*, never *domain packs*.
+for axis two only: it spins up *tenants*, never *subject packs*.
 
 ### §3.3 Multi-brand, not SaaS — settled, and it deletes a category of work
 
@@ -236,7 +245,7 @@ is built yet — but deciding it now costs nothing and deciding it later costs a
 
 It adds roughly a day to Stage 1 and changes nothing downstream, because the stages already put the
 schema first. It does **not** pull the admin console, theme manager, portal wizard, per-tenant
-billing or a second domain pack into scope — those stay deferred exactly as the attached plan had
+billing or a second subject pack into scope — those stay deferred exactly as the attached plan had
 them, and that judgement was right. The change is confined to the shape of the tables plus one extra
 exit test: *one ingested fact, two portals, two renderings, one archive row.* If Stage 1 passes
 that, the factory is real rather than aspirational.
@@ -254,8 +263,8 @@ must not require a new codebase or a separate deployment.
 tenants.yaml
   - id: visatrack-africa
     domain: visatrack.africa
-    domain_pack: immigration
-    routes: [uk.skilled_worker, ca.express_entry, …]
+    subject_pack: immigration
+    topics: [uk.skilled_worker, ca.express_entry, …]
     branding: { name, logo, theme tokens }
     channels:
       telegram: @visatrack_alerts
@@ -271,7 +280,7 @@ Channel adapters are written **once at platform level**, not per portal — one 
 N channels, one email adapter serving N sending identities. A portal's config selects which channels
 it uses and supplies its own identity on each.
 
-| | Same domain pack | New domain pack |
+| | Same subject pack | New subject pack |
 |---|---|---|
 | **Example** | A third immigration portal — StudyPath for student visas | GrantTrack, TenderTrack, MediaTrack |
 | **Work** | Tenant block, DNS record, create the channel identities, tokens into secrets, deploy the config | All of that *plus* new source adapters, extraction schemas, prompts, risk table, render templates, and a ~20-document golden corpus before it can be trusted |
@@ -319,7 +328,7 @@ Sequenced by dependency, sized in engineering days for one competent full-time e
 - **Three-layer separation** (§3): archive tables carry no `tenant_id`; a `Publication` table is the
   only tenant-scoped content layer.
 - Temporal fact schema (§5.1): `valid_from`, `valid_to`, `superseded_by`, citation triple, taxonomy
-  edition, plus `domain_pack` + `pack_version` stamps.
+  edition, plus `subject_pack` + `pack_version` stamps.
 - `ObjectStore` interface — local FS now, R2 later. Postgres never holds raw bytes.
 - `AuditLog` on every state transition, append-only, carrying actor *and* tenant.
 - `tenants.yaml` / `sources.yaml` validated at startup; tenant resolved by host so routing is never
@@ -421,9 +430,9 @@ legal exposure, lowest direct revenue.
 
 ```
 policy_fact   # shared archive — no tenant_id, ever
-  domain_pack      "immigration"
+  subject_pack      "immigration"
   pack_version     "1.3.0"         # which schema produced this fact
-  route            "uk.skilled_worker"
+  topic            "uk.skilled_worker"   # was "route" — subject-neutral
   field            "general_salary_threshold"
   value            { amount, currency }
   valid_from       date
@@ -478,8 +487,8 @@ can be taken piecemeal.
 | **D14** | `POST /admin/approve/{change_id}` | Adds reject-with-reason, reviewer identity, immutable audit on both paths | "All material actions appear in audit logs" is an acceptance criterion; approve-only cannot satisfy it |
 | **D15** | No data-protection constraint on the schema | Data minimisation designed in: no case descriptions stored; a lead is an ID + consent record + audit row | NDPA 2023 obligations are unaddressed in all three documents and land on the lead-gen revenue engine |
 | **D17** | `Tenant` model plus a tenant key on content rows | Three layers: archive (no tenant), subscription (config), publication (tenant-scoped) | A tenant key on content either duplicates the archive per portal or forces rewriting every query later. It also makes v1 criterion #15 — one source, different tenant outputs — unsatisfiable |
-| **D18** | `theme: immigration` as a config string; per-tenant "AI instructions" | Domain pack as versioned, tested code; tenant config holds only a pack reference | Extraction schemas and prompts cannot be free-text tenant config — that is the hallucination surface the Master Review closed. It also separates a cheap new portal from an expensive new vertical |
-| **D19** | No provenance for which schema produced a fact | `domain_pack` + `pack_version` stamped on every fact | Same silent-corruption class as the taxonomy edition: you cannot re-extract, compare or invalidate facts without knowing which pack version wrote them |
+| **D18** | `theme: immigration` as a config string; per-tenant "AI instructions" | Subject pack as versioned, tested code; tenant config holds only a pack reference | Extraction schemas and prompts cannot be free-text tenant config — that is the hallucination surface the Master Review closed. It also separates a cheap new portal from an expensive new vertical |
+| **D19** | No provenance for which schema produced a fact | `subject_pack` + `pack_version` stamped on every fact | Same silent-corruption class as the taxonomy edition: you cannot re-extract, compare or invalidate facts without knowing which pack version wrote them |
 | **D20** | Tenant implied by the URL path only | Tenant resolved by host from Stage 1; audit rows carry tenant | Each portal is meant to look independent on its own domain. Retrofitting host resolution touches every route and auth check |
 | **D21** | Review queue implicitly per published item | Review the *fact* once; publish to N tenants by rule | Otherwise the human queue multiplies per portal and the staffing arithmetic breaks at portal three |
 | **D16** | Work begins immediately at the code | Tracks A and B start day one, in parallel | The six clearances are the real critical path, and Track B is the only demand test in the roadmap |
