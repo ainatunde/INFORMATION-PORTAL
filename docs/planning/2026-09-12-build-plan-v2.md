@@ -2,7 +2,7 @@
 
 **Date:** 12 September 2026
 **Status:** proposed — supersedes the Phase 1 implementation plan
-**Settled:** 12 Sep — every portal is owned and operated by MCS (confirm Q4)
+**Settled:** 12 Sep — every portal MCS-owned (Q4) · no stored case descriptions (Q3) · graduated auto-publish (Q2)
 **Baseline:** Master Review + Phase 1 implementation plan. Master Plan v1 is historical reference only.
 **Published version:** https://claude.ai/code/artifact/dc28d1e7-7f7f-4474-948c-efdac1b668db
 **Companion:** `2026-09-12-third-reading.md`
@@ -74,6 +74,51 @@ guess about what to extract.
 
 It also resolves the third reading's contradiction: you can sell an *instant* alert and still gate
 everything risky, because the instant thing and the risky thing are no longer the same object.
+
+### §2.1 Lane B is the product, not the human gate
+
+The naming invites a conflation worth clearing up. **Lane B is the interpretation product** — the
+threshold moved from X to Y, effective D, here is who it affects. The human review is a *policy
+applied to* Lane B, not Lane B itself. Lane B can be fully automated. The question is never whether
+to have it, only whether a person sits in it and for how long.
+
+It is not optional on either axis. **Commercially**, Lane A alone is a link-dropper: anyone can build
+RSS-to-Telegram in an afternoon and nobody pays for it. Every item in the revenue model — the
+dossier, the premium alert, the B2B policy dashboard, the historical API — is *what changed and what
+it means for me*. Lane A builds the audience; Lane B is what you sell. **Technically**, Lane B *is*
+the archive: extraction is what produces structured temporal facts, so without it there are no
+`policy_fact` rows, no supersession chain, and no answer to "what did this rule say in March 2024".
+Lane A stores documents. Lane B turns them into data, and the moat is in the data.
+
+### §2.2 Earning full automation instead of assuming it
+
+v1 §1 already set the operating model as *"automated by default, exception-routed, minimal daily human
+involvement"*, and v1 §8's publication rules already route low-confidence items to quarantine and
+unsupported legal conclusions to blocked. A human exception path was always in the plan. What follows
+is not an addition to it — it specifies *which* exceptions route, and how that set shrinks with
+evidence.
+
+The reason not to auto-publish everything on day one is simply that **the error rate is unknown until
+the Stage 4 corpus exists.** And the error is asymmetric in a way that cannot be refunded: a wrong
+salary threshold means someone submits an application, pays several thousand pounds in non-refundable
+fees and health surcharge, is refused, and carries a refusal history. A wrong reading on
+exit-and-reapply can trigger a multi-year re-entry bar. Against a positioning built entirely on being
+the accurate source, one viral error costs more than the review ever did.
+
+| Risk class | Examples | At launch | Promotion rule |
+|---|---|---|---|
+| **1 — Restatement** | Fee amount, form version, processing time, office change | **Automatic** | None needed — template-rendered restatement with a citation, no comparative claim |
+| **2 — Comparative** | Threshold X→Y, occupation added to or removed from a list, CRS cutoff | Human | Automatic after 50 consecutive approvals with zero material corrections in that class |
+| **3 — Consequential** | Grandfathering, transitional provisions, who is affected | Human | Only by explicit decision with legal input |
+| **4 — Never** | Overstay, unlawful presence, anything where acting on it could trigger a bar | Human always | Arguably not Lane B at all — route to the legal partner |
+
+Every review is a free labelled data point, so the calibration set accumulates while you operate.
+Class 1 is automatic from day one; Class 2 is the bulk of the volume and should clear its gate within
+weeks. The realistic destination is **80–90% of Lane B auto-publishing within a few months**, with a
+person on only the handful of items that can genuinely ruin someone — which is what "automated by
+default, exception-routed" means in practice. Two things keep the cost down: the load at Tier 1 is
+one to seven hours a week, and per D21 a fact is reviewed once and published to N portals, so review
+effort scales with countries, never with portals.
 
 ## §3 The factory: what multi-tenant actually requires
 
@@ -283,11 +328,16 @@ changes no application code and reruns the corpus.
   reliability. Thresholds, quota cutoffs, overstay and unlawful presence always route to review.
 - Review queue: list, approve, **reject with reason** — both writing immutable audit rows with
   reviewer identity.
+- **Graduated auto-publish** (§2.2): risk classes 1–4, Class 1 automatic from launch, and a per-class
+  counter of consecutive clean approvals that promotes Class 2 to automatic once its threshold is
+  met. The counter resets on any material correction.
 - Approved interpretation attaches to its notice and dispatches a follow-up.
 
 **Exit test:** a historical UK threshold change replays end to end — notice fires immediately,
 interpretation quarantines, a named reviewer approves, follow-up dispatches, prior fact marked
 superseded with a pointer, every step reconstructable from the audit log alone. Reject path verified.
+A Class 1 item publishes with no human touch, and a Class 4 item cannot be auto-published even when
+its counter would otherwise allow it.
 
 ### Stage 6 — Durability · 3–4 days
 - R2 implementation of `ObjectStore` swapped in behind the Stage 1 interface.
@@ -371,19 +421,26 @@ can be taken piecemeal.
 | **D21** | Review queue implicitly per published item | Review the *fact* once; publish to N tenants by rule | Otherwise the human queue multiplies per portal and the staffing arithmetic breaks at portal three |
 | **D16** | Work begins immediately at the code | Tracks A and B start day one, in parallel | The six clearances are the real critical path, and Track B is the only demand test in the roadmap |
 
-## §7 Five things to settle before Stage 1 — one down
+## §7 Five things to settle before Stage 1 — three down
 
-Question 4 is answered and its consequences are absorbed into §3.3. v2 assumes the rest; two of the
-three open questions change the schema, so they are cheap now and expensive at Stage 4.
+Questions 3 and 4 are answered and absorbed into §3.3 and the data-minimisation rules below.
+Question 2 is answered in substance by the §2.2 ladder and needs only a named owner. That leaves
+Question 1 as the one decision still genuinely open.
 
 1. **Two lanes, with Lane A shipping before any AI?** *Assumed yes.* The load-bearing decision.
    Reject it and v2 collapses back to roughly the attached plan's ordering, with D4–D16 still applying.
-2. **Who owns the Lane B review queue, and what is the response target?** *Assumed:* one named
-   reviewer, 4 working hours flagged / 48 routine, documented fallback. Unanswered, Stage 5 builds a
-   queue nobody empties — a pipeline that silently publishes nothing.
-3. **Do we store case descriptions in the overstay and lead flow?** *Assumed no* — encrypted to the
-   partner, never retained; we keep an ID, a consent record and an audit row. Constrains the Stage 1
-   schema, so it cannot wait for the lead product.
+2. **Who owns the Lane B review queue, and do we accept graduated auto-publish?** *Assumed:* the
+   §2.2 ladder — Class 1 automatic at launch, Class 2 promoted on 50 clean approvals, Classes 3–4
+   held — plus one named reviewer at 4 working hours flagged / 48 routine, with a documented
+   fallback. Without a named owner, Stage 5 builds a queue nobody empties, and the failure is silent:
+   notices keep firing while interpretation output quietly goes to zero.
+3. **Do we store case descriptions in the overstay and lead flow?** — **SETTLED 12 Sep: no.** The
+   referral payload reaches the partner and is dropped. Retained: lead ID, route interest,
+   destination country, timestamp, consent version, partner routed to, outcome status. The audit log
+   records *that* a referral happened, never what it said; request-body logging off on those
+   endpoints and error-tracking payloads scrubbed. And if a case description is ever sent to a model
+   for triage, that call runs under zero retention — a clean database does not help if the text sat
+   in a vendor's logs.
 4. **Will any portal ever be operated by someone outside MCS?** — **SETTLED 12 Sep: no, every
    portal is MCS-owned.** Multi-brand single-operator. Deletes row-level security, per-tenant secrets
    and quotas, self-serve onboarding, per-tenant SLAs and the archive licensing question outright —
@@ -392,5 +449,6 @@ three open questions change the schema, so they are cheap now and expensive at S
    figure is one competent engineer full-time. Part-time roughly doubles the calendar; the same
    person also running the review queue and partner sales roughly doubles it again.
 
-Confirm 1–3 and Stage 1 is buildable immediately: the schema, migration, storage interface and audit
-log need no vendor decision, no API key and no Docker. Question 5 changes only the calendar.
+Confirm Question 1 and name the reviewer, and Stage 1 is buildable immediately: the schema,
+migration, storage interface and audit log need no vendor decision, no API key and no Docker.
+Question 5 changes only the calendar.
