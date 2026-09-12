@@ -2,6 +2,7 @@
 
 **Date:** 12 September 2026
 **Status:** proposed — supersedes the Phase 1 implementation plan
+**Settled:** 12 Sep — every portal is owned and operated by MCS (confirm Q4)
 **Baseline:** Master Review + Phase 1 implementation plan. Master Plan v1 is historical reference only.
 **Published version:** https://claude.ai/code/artifact/dc28d1e7-7f7f-4474-948c-efdac1b668db
 **Companion:** `2026-09-12-third-reading.md`
@@ -137,23 +138,56 @@ them the same way is how a portal-factory thesis fails in year two — you promi
 week, then discover the extraction layer must be rebuilt and reviewed from scratch. Plan the wizard
 for axis two only: it spins up *tenants*, never *domain packs*.
 
-### §3.3 Multi-brand is not yet SaaS — and that distinction saves months
+### §3.3 Multi-brand, not SaaS — settled, and it deletes a category of work
 
-Every portal in scope is operated by MCS: multi-brand, single-operator. The tenants are all yours,
-none is an adversary, none has a contract with you. Genuine SaaS — external customers running their
-own portals — adds tenant isolation as a *security* boundary, per-tenant secrets and key rotation,
-noisy-neighbour quotas, self-serve onboarding, per-tenant SLAs and support, and data-residency
-answers.
+**Confirmed 12 September: every portal is owned and operated by MCS.** That makes this multi-brand
+single-operator, not software-as-a-service. No tenant is an adversary, none has a contract with you,
+and none can be given a security guarantee it might later enforce. This is the cheapest available
+answer, and it permanently removes work rather than deferring it.
 
-**Where to draw the line:** build the **data separation** now — three layers, a publication table,
-host-based tenant resolution, tenant on every audit row — because it is structural and nearly free.
-Do **not** build operator isolation (row-level security, per-tenant credentials, quota enforcement)
-until an external customer is paying for a portal. With two internal tenants, RLS is the same
-gold-plating the Master Review rejected elsewhere. Note too that the moment a tenant is external,
-the shared archive stops being purely a schema question and becomes a licensing one: who owns the
-right to resell the policy history.
+| Deleted, not deferred | Stands regardless |
+|---|---|
+| Row-level security and schema-per-tenant isolation. Application-level scoping on the publication layer is sufficient | The three layers — they exist for deduplication, the archive and review-once, not for isolation |
+| Per-tenant secrets, credentials and key rotation. One platform secret set | Host-based tenant resolution — portals still need to look independent on their own domains |
+| Noisy-neighbour quotas and per-tenant fairness limits | Public API rate limiting, for abuse prevention rather than fairness |
+| Self-serve onboarding and a tenant provisioning product. A new portal is a YAML file, a PR and a DNS record — a runbook, not a feature | Tenant on every audit row — you still need to know which portal an action touched |
+| Per-tenant SLAs, support tooling and a tenant-facing console. MCS staff work one internal ops view across all portals | Revenue and analytics reported per portal — v1 criterion #19, which is reporting, not tenancy infrastructure |
+| Data residency per tenant, and the archive licensing question — MCS owns the archive outright and resells it as it chooses | One staff RBAC model with roles, rather than per-tenant user pools |
 
-### §3.4 What this changes, and what it does not
+**The inference to avoid.** "MCS owns every tenant" does **not** mean the three-layer split can be
+skipped. None of D17–D21 exist for isolation. They exist because one snapshot must serve N portals
+without duplication, because the archive compounds only if shared, and because a fact reviewed once
+must publish to many — all true whoever owns the tenants. Collapsing the layers because nobody
+outside would complain is how you get the per-portal archive duplication §3 was written to prevent.
+
+One genuine risk arrives with this answer, and it is cultural rather than technical. Because no
+external party would object, keeping portals distinct becomes self-imposed discipline: it will be
+tempting to surface SkilledPath content inside VisaTrack, or to mail every user about every portal.
+Both undermine the "independent, focused portal" positioning that is the point of the factory — and
+per §3.4 both may breach the consent under which the data was collected. Keep publication boundaries
+enforced in code even though nothing outside the company requires it.
+
+### §3.4 The question MCS ownership raises instead: one audience or several?
+
+Settling ownership surfaces a different question. A Nigerian tradesperson is plausibly both a
+VisaTrack and a SkilledPath reader; the commercial thesis is explicitly cross-portal. So does a user
+who signs up on one portal have an account on the other?
+
+**Recorded default: shared identity, portal-scoped subscriptions and consent.** The same shape as the
+content model — `user` is tenant-agnostic, and a join table carries which portals they subscribed to,
+on which channels, under which consent. Separate identity per portal doubles the authentication
+surface for no benefit when you own both sides, and forecloses the cross-sell that makes the second
+portal worth building. Presentation stays independent regardless: the reader never sees "MCS
+Information Cloud".
+
+One constraint travels with it — the NDPA point from the third reading, in a new place: **consent is
+per portal and per purpose.** A user who consented to UK policy alerts on VisaTrack has not consented
+to SkilledPath trade marketing, and a shared identity table makes that boundary easy to cross by
+accident. Store the consent record against the join, not against the user, so the lawful basis is
+checked at the point of sending. No user accounts exist before Stage 6 in any case, so nothing here
+is built yet — but deciding it now costs nothing and deciding it later costs a migration.
+
+### §3.5 What this changes, and what it does not
 
 It adds roughly a day to Stage 1 and changes nothing downstream, because the stages already put the
 schema first. It does **not** pull the admin console, theme manager, portal wizard, per-tenant
@@ -337,10 +371,10 @@ can be taken piecemeal.
 | **D21** | Review queue implicitly per published item | Review the *fact* once; publish to N tenants by rule | Otherwise the human queue multiplies per portal and the staffing arithmetic breaks at portal three |
 | **D16** | Work begins immediately at the code | Tracks A and B start day one, in parallel | The six clearances are the real critical path, and Track B is the only demand test in the roadmap |
 
-## §7 Five things to confirm before Stage 1
+## §7 Five things to settle before Stage 1 — one down
 
-v2 assumes the answers below. Four of the five change the schema, so they are cheap now and
-expensive at Stage 4.
+Question 4 is answered and its consequences are absorbed into §3.3. v2 assumes the rest; two of the
+three open questions change the schema, so they are cheap now and expensive at Stage 4.
 
 1. **Two lanes, with Lane A shipping before any AI?** *Assumed yes.* The load-bearing decision.
    Reject it and v2 collapses back to roughly the attached plan's ordering, with D4–D16 still applying.
@@ -350,13 +384,13 @@ expensive at Stage 4.
 3. **Do we store case descriptions in the overstay and lead flow?** *Assumed no* — encrypted to the
    partner, never retained; we keep an ID, a consent record and an audit row. Constrains the Stage 1
    schema, so it cannot wait for the lead product.
-4. **Will any portal ever be operated by someone outside MCS?** *Assumed no, not within this plan.*
-   Every tenant today is yours — multi-brand single-operator, not SaaS. If an external operator is
-   genuinely on the 12-month horizon, say so now: it turns tenant isolation into a security boundary
-   and the shared archive into a licensing question, and both reach back into Stage 1.
+4. **Will any portal ever be operated by someone outside MCS?** — **SETTLED 12 Sep: no, every
+   portal is MCS-owned.** Multi-brand single-operator. Deletes row-level security, per-tenant secrets
+   and quotas, self-serve onboarding, per-tenant SLAs and the archive licensing question outright —
+   see §3.3 for the full list and for the one inference not to draw from it.
 5. **Who is building this, at what commitment?** Still unnamed in every document. The 24–31 day
    figure is one competent engineer full-time. Part-time roughly doubles the calendar; the same
    person also running the review queue and partner sales roughly doubles it again.
 
-Confirm 1–4 and Stage 1 is buildable immediately: the schema, migration, storage interface and audit
+Confirm 1–3 and Stage 1 is buildable immediately: the schema, migration, storage interface and audit
 log need no vendor decision, no API key and no Docker. Question 5 changes only the calendar.
