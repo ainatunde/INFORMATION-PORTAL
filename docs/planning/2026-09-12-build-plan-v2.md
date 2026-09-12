@@ -13,8 +13,8 @@ Same destination as the attached implementation plan, reordered around one struc
 | | |
 |---|---|
 | **Scope** | One shared archive, two portals. Immigration is domain pack #1 |
-| **Shape** | 3 data layers, 6 build stages each with an exit test, 2 parallel tracks |
-| **Effort** | 24–31 engineering days to full Lane A + Lane B (one full-time engineer) |
+| **Shape** | 3 data layers, 7 build stages each with an exit test, 2 parallel tracks |
+| **Effort** | 29–38 engineering days to both lanes plus the web portals (one full-time engineer) |
 | **First live output** | End of Stage 3 — ~12 days in, zero AI spend |
 
 ---
@@ -241,6 +241,49 @@ them, and that judgement was right. The change is confined to the shape of the t
 exit test: *one ingested fact, two portals, two renderings, one archive row.* If Stage 1 passes
 that, the factory is real rather than aspirational.
 
+### §3.6 Anatomy of a portal — what spinning one up actually involves
+
+Worth stating plainly, because "multi-tenant platform" is often read as something it is not. **There is
+one backend, one frontend codebase, one database and one deployment.** A portal is not an application;
+it is a configuration block, a DNS record and a set of channel identities. Giving each portal its own
+backend would mean N deployments to patch, N databases, and N copies of the archive — destroying the
+deduplication and the compounding asset §3.1 exists to protect. v1 put it correctly: adding a portal
+must not require a new codebase or a separate deployment.
+
+```
+tenants.yaml
+  - id: visatrack-africa
+    domain: visatrack.africa
+    domain_pack: immigration
+    routes: [uk.skilled_worker, ca.express_entry, …]
+    branding: { name, logo, theme tokens }
+    channels:
+      telegram: @visatrack_alerts
+      whatsapp: sender id
+      email:    alerts@visatrack.africa
+    disclaimers: per-portal text
+
+# plus: a DNS record, and channel tokens in secrets.
+# nothing else. no code, no deployment, no schema change.
+```
+
+Channel adapters are written **once at platform level**, not per portal — one Telegram adapter serving
+N channels, one email adapter serving N sending identities. A portal's config selects which channels
+it uses and supplies its own identity on each.
+
+| | Same domain pack | New domain pack |
+|---|---|---|
+| **Example** | A third immigration portal — StudyPath for student visas | GrantTrack, TenderTrack, MediaTrack |
+| **Work** | Tenant block, DNS record, create the channel identities, tokens into secrets, deploy the config | All of that *plus* new source adapters, extraction schemas, prompts, risk table, render templates, and a ~20-document golden corpus before it can be trusted |
+| **Cost** | **Hours** | **Weeks of engineering** |
+
+**Two things "social media" means, and only one is in scope.** *Outbound broadcast* — pushing your
+content out: Telegram at Stage 3, then WhatsApp and email. Posting to X, Facebook or Instagram is **not**
+in v2: straightforward to add behind the same channel interface later, but each carries its own API,
+app-review process, rate limits and content policy. *Inbound monitoring* — ingesting social content for
+VisaTrack Verify — is a different and much harder problem (bot defences, transcription, API cost) and
+stays deferred, as the Master Review intended.
+
 ---
 
 ## §4 Two tracks that start before Stage 1
@@ -348,8 +391,28 @@ its counter would otherwise allow it.
 **Exit test:** restore DB and object store into a clean container from backups alone and verify the
 hash chain end to end. Write the drill up. An untested backup is a belief, not a backup.
 
+### Stage 7 — The web portals, one codebase and N brands · 5–7 days · **SHIPS**
+
+Stages 1–6 deliver a feed API and Telegram, with no website. Deliberate for validation but not
+sustainable, because search is a primary acquisition channel: someone googling a salary threshold is
+exactly the high-intent reader you want, and a Telegram channel is invisible to them.
+
+- **One** Next.js codebase, host-based tenant resolution, theme tokens read from the portal config.
+  Not one frontend per portal.
+- Static or incrementally-regenerated pages over the same public feed API, so the archive is never
+  queried directly by the web tier.
+- Per-portal disclaimers, citations visible on every published fact, retrieval timestamp shown rather
+  than hidden.
+- Sitemaps, structured data and canonical URLs per portal — the SEO surface that makes content findable.
+
+**Exit test:** two domains resolve to two visually distinct portals from one deployment, each showing
+only its subscribed routes, each with its own disclaimer, neither leaking the other's content or the
+platform's name. A published fact's citation and retrieval time are visible to the reader. Lighthouse
+SEO passes on a representative page.
+
 ### Out of scope for v2
-VisaTrack Verify, payments, the B2B lead flow, SkilledPath, any tenant-management UI. Each is gated
+VisaTrack Verify and all inbound social monitoring, outbound posting to X, Facebook and Instagram,
+payments, the B2B lead flow, SkilledPath, any tenant-management UI. Each is gated
 on Track B results and Track A clearances, and deserves its own plan. Verify should not start until
 the defamation and right-of-reply constraints are written down as product requirements — highest
 legal exposure, lowest direct revenue.
